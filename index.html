@@ -2,156 +2,314 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Vacantes docentes</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1b365d">
+<title>Visor de vacantes docentes</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <style>
-  html, body { height: 100%; margin: 0; font-family: system-ui, sans-serif; font-size: 14px; }
-  #app { display: flex; height: 100%; }
-  #panel { width: 300px; flex: none; display: flex; flex-direction: column; border-right: 1px solid #ccc; background: #fff; }
-  #panel header { padding: 10px 12px; border-bottom: 1px solid #ddd; }
-  #panel h1 { font-size: 16px; margin: 0 0 4px; }
-  #resumen { color: #555; }
-  #tools { padding: 8px 12px; display: flex; gap: 6px; flex-wrap: wrap; border-bottom: 1px solid #eee; }
-  #tools input[type=search] { flex: 1 1 100%; padding: 6px; box-sizing: border-box; }
-  button { padding: 5px 8px; cursor: pointer; }
-  #areas { flex: 1; overflow-y: auto; padding: 4px 12px; }
-  #areas label { display: flex; gap: 6px; padding: 3px 0; align-items: flex-start; }
-  #areas .n { margin-left: auto; color: #777; }
-  #map { flex: 1; }
-  .grp { background: #1a5fb4; color: #fff; border: 2px solid #fff; border-radius: 50%;
-         display: flex; align-items: center; justify-content: center; font-weight: 700; box-shadow: 0 0 3px #0008; }
-  .popup-list { max-height: 220px; overflow-y: auto; margin: 6px 0 0; padding-left: 16px; }
-  .popup-list li { margin-bottom: 6px; }
-  .btn-loc { background: #fff; border: 2px solid rgba(0,0,0,.3); border-radius: 4px; padding: 6px 9px; font-weight: 600; }
-  @media (max-width: 700px) {
-    #app { flex-direction: column-reverse; }
-    #panel { width: auto; height: 42%; border-right: 0; border-top: 1px solid #ccc; }
-    #map { flex: 1; }
+  :root {
+    --azul: #1b365d; --azul-claro: #e8edf4; --borde: #c9d1dc; --texto: #1f2933; --suave: #5b6673; --fondo: #f4f6f9;
+    --sombra: 0 1px 3px rgba(0,0,0,.25);
   }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { display: flex; flex-direction: column; height: 100dvh; font: 15px/1.4 "Segoe UI", Roboto, Arial, sans-serif; color: var(--texto); background: var(--fondo); }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  :focus-visible { outline: 3px solid #f0a500; outline-offset: 1px; }
+
+  /* Encabezado */
+  .bar { flex: none; display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 12px;
+         padding-top: env(safe-area-inset-top); background: var(--azul); color: #fff; border-bottom: 3px solid #f0a500; }
+  .bar h1 { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.15; }
+  .bar h1 small { display: block; font-size: 12px; font-weight: 400; opacity: .85; }
+  .icon-btn { width: 44px; height: 44px; flex: none; display: grid; place-items: center; background: transparent; border: 0; color: inherit; }
+  .icon-btn svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; }
+
+  /* Estructura */
+  main { flex: 1; min-height: 0; display: flex; position: relative; }
+  #panel { flex: none; width: 340px; display: flex; flex-direction: column; background: #fff; border-right: 1px solid var(--borde); min-height: 0;
+           transition: margin-left .2s; }
+  body.cerrado #panel { margin-left: -340px; }
+  #map { flex: 1; min-width: 0; }
+  .handle { display: none; }
+
+  .resumen { flex: none; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 10px 14px; background: var(--azul-claro); border-bottom: 1px solid var(--borde); }
+  .resumen strong { font-size: 17px; }
+  .resumen span { color: var(--suave); font-size: 13px; }
+  .contenido { flex: 1; overflow-y: auto; min-height: 0; -webkit-overflow-scrolling: touch; padding-bottom: env(safe-area-inset-bottom); }
+
+  details { border-bottom: 1px solid var(--borde); }
+  summary { list-style: none; display: flex; align-items: center; justify-content: space-between; min-height: 44px; padding: 0 14px;
+            font-weight: 600; cursor: pointer; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: ""; width: 8px; height: 8px; border-right: 2px solid var(--suave); border-bottom: 2px solid var(--suave); transform: rotate(45deg); transition: transform .15s; margin-right: 4px; }
+  details[open] > summary::after { transform: rotate(-135deg); }
+  .sec { padding: 0 14px 12px; }
+
+  .buscar { width: 100%; height: 44px; padding: 0 10px; border: 1px solid #8a94a3; border-radius: 3px; font: inherit; }
+  .acciones { display: flex; gap: 6px; margin: 8px 0; flex-wrap: wrap; }
+  .acciones button { flex: 1 1 auto; min-height: 40px; padding: 0 10px; border: 1px solid var(--azul); background: #fff; color: var(--azul); border-radius: 3px; font-size: 13px; font-weight: 600; }
+  .acciones button:active { background: var(--azul-claro); }
+  .lista { max-height: 340px; overflow-y: auto; border: 1px solid var(--borde); border-radius: 3px; }
+  .lista label { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 4px 10px; border-bottom: 1px solid #eceff3; cursor: pointer; }
+  .lista label:last-child { border-bottom: 0; }
+  .lista input { width: 20px; height: 20px; flex: none; accent-color: var(--azul); }
+  .lista .n { margin-left: auto; color: var(--suave); font-variant-numeric: tabular-nums; }
+  .vacio { padding: 12px; color: var(--suave); }
+
+  .leg-fila { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+  .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; }
+  .nota { color: var(--suave); font-size: 13px; margin-top: 6px; }
+
+  /* Detalle de sede */
+  #detalle { display: none; }
+  body.ver-detalle #detalle { display: block; }
+  body.ver-detalle #filtros { display: none; }
+  .det-cab { display: flex; align-items: flex-start; gap: 4px; padding: 6px 6px 6px 2px; border-bottom: 1px solid var(--borde); background: var(--fondo); }
+  .det-cab h2 { margin: 10px 0 0; font-size: 15px; line-height: 1.25; }
+  .det-cab p { margin: 2px 0 8px; color: var(--suave); font-size: 13px; }
+  .vac { padding: 10px 14px; border-bottom: 1px solid var(--borde); }
+  .vac .area { font-weight: 600; }
+  .vac .jor { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--suave); }
+  .vac .obs { margin-top: 4px; font-size: 13px; color: var(--suave); }
+
+  /* Marcadores */
+  .sch { position: relative; width: 30px; height: 30px; border-radius: 50%; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 4px #0009; }
+  .sch svg { width: 18px; height: 18px; }
+  .sch .cnt { position: absolute; top: -9px; right: -10px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: #fff; color: #111;
+              font: 700 11px/18px system-ui, sans-serif; text-align: center; box-shadow: 0 0 3px #0008; }
+
+  /* Controles del mapa */
+  .leaflet-bar a, .leaflet-bar button { width: 40px !important; height: 40px !important; line-height: 40px !important; }
+  .ctl-btn { display: grid; place-items: center; background: #fff; border: 0; padding: 0; }
+  .ctl-btn svg { width: 22px; height: 22px; fill: none; stroke: var(--azul); stroke-width: 2; }
+  .leyenda { background: #fff; border-radius: 3px; box-shadow: var(--sombra); font-size: 13px; max-width: 220px; }
+  .leyenda > button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 40px; padding: 0 12px; background: none; border: 0; font-weight: 600; }
+  .leyenda .cuerpo { padding: 0 12px 10px; }
+  .leyenda.min .cuerpo { display: none; }
+  .aviso { position: absolute; z-index: 1000; left: 50%; bottom: 16px; transform: translateX(-50%); max-width: calc(100% - 32px); padding: 10px 14px;
+           background: #1f2933; color: #fff; border-radius: 3px; font-size: 14px; box-shadow: var(--sombra); display: none; }
+
+  /* Smartphone: la barra lateral pasa a ser una hoja inferior con tres alturas */
+  @media (max-width: 760px) {
+    main { flex-direction: column; }
+    #map { flex: 1; min-height: 0; }
+    #panel { width: auto; order: 2; margin-left: 0 !important; border-right: 0; border-top: 1px solid var(--borde);
+             box-shadow: 0 -2px 6px rgba(0,0,0,.15); transition: height .2s; }
+    body[data-hoja="min"]  #panel { height: 92px; }
+    body[data-hoja="med"]  #panel { height: 48%; }
+    body[data-hoja="max"]  #panel { height: 88%; }
+    .handle { display: flex; flex: none; height: 28px; width: 100%; align-items: center; justify-content: center; background: #fff; border: 0; padding: 0; touch-action: none; }
+    .handle::before { content: ""; width: 44px; height: 5px; border-radius: 3px; background: #9aa5b4; }
+    .bar h1 { font-size: 15px; }
+    .leaflet-top.leaflet-right .leaflet-control { margin-right: 10px; }
+  }
+  @media (min-width: 761px) { .bar #btnPanel { display: grid; } }
 </style>
 </head>
-<body>
-<div id="app">
-  <aside id="panel">
-    <header>
-      <h1>Vacantes - aula regular</h1>
-      <div id="resumen">Cargando...</div>
-    </header>
-    <div id="tools">
-      <input id="buscar" type="search" placeholder="Buscar área...">
-      <button id="preset">Empresa / Comercio / Contab.</button>
-      <button id="todas">Todas</button>
-      <button id="ninguna">Ninguna</button>
+<body class="" data-hoja="med">
+
+<header class="bar">
+  <button class="icon-btn" id="btnPanel" aria-label="Mostrar u ocultar panel" aria-expanded="true">
+    <svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+  </button>
+  <h1>Vacantes docentes<small>Aula regular · consulta por área y jornada</small></h1>
+</header>
+
+<main>
+  <aside id="panel" aria-label="Panel de consulta">
+    <button class="handle" id="handle" aria-label="Cambiar tamaño del panel"></button>
+    <div class="resumen"><strong id="resTotal">—</strong><span id="resSedes"></span></div>
+
+    <div class="contenido">
+      <div id="filtros">
+        <details open>
+          <summary>Filtrar por área</summary>
+          <div class="sec">
+            <input id="buscar" class="buscar" type="search" placeholder="Buscar área" aria-label="Buscar área">
+            <div class="acciones">
+              <button id="preset">Empresa y contabilidad</button>
+              <button id="todas">Todas</button>
+              <button id="ninguna">Ninguna</button>
+            </div>
+            <div id="lista" class="lista"></div>
+          </div>
+        </details>
+        <details>
+          <summary>Leyenda</summary>
+          <div class="sec" id="legPanel"></div>
+        </details>
+        <details>
+          <summary>Acerca de los datos</summary>
+          <div class="sec nota">Cada símbolo es una sede educativa oficial. Si la sede tiene varias vacantes del filtro activo, el número indica cuántas. Toque un símbolo para ver el detalle.</div>
+        </details>
+      </div>
+
+      <div id="detalle">
+        <div class="det-cab">
+          <button class="icon-btn" id="volver" aria-label="Volver a los filtros"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+          <div><h2 id="detNombre"></h2><p id="detSub"></p></div>
+        </div>
+        <div id="detLista"></div>
+      </div>
     </div>
-    <div id="areas"></div>
   </aside>
   <div id="map"></div>
-</div>
+  <div class="aviso" id="aviso" role="status"></div>
+</main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 const PRESET = /GESTION EMPRESARIAL|COMERCI|EMPRENDIMIENTO|CONTABILIDAD|GESTION CONTABLE/;
+const COLOR = { 'MANANA': '#14532d', 'TARDE': '#1e3a8a', 'COMPLETA': '#4c1d95', 'UNICA': '#b45309', 'GLOBAL': '#6b7280' };
+const NOMBRE = { 'MANANA': 'Mañana', 'TARDE': 'Tarde', 'COMPLETA': 'Completa', 'UNICA': 'Única', 'GLOBAL': 'Global' };
+const MIXTA = '#374151';
+const ICONO = '<svg viewBox="0 0 24 24"><path fill="#fff" d="M12 5 2 11h2v9h16v-9h2z"/><rect x="10" y="14" width="4" height="6" fill="currentColor"/><path stroke="#fff" stroke-width="1.6" d="M12 5V1.5"/><path fill="#fff" d="M12 1.5h4.5v2.5H12z"/></svg>';
 const norm = s => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim();
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const $ = id => document.getElementById(id);
+const esMovil = () => matchMedia('(max-width: 760px)').matches;
 
-const map = L.map('map').setView([4.65, -74.1], 11);
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  maxZoom: 19, attribution: '&copy; OpenStreetMap'
-}).addTo(map);
-const capa = L.layerGroup().addTo(map);
-window.addEventListener('load', () => map.invalidateSize());
-new ResizeObserver(() => map.invalidateSize()).observe(document.getElementById('map'));
+/* ---------- Mapa ---------- */
+const map = L.map('map', { zoomControl: false }).setView([4.65, -74.1], 11);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
+L.control.zoom({ position: 'topright', zoomInTitle: 'Acercar', zoomOutTitle: 'Alejar' }).addTo(map);
+new ResizeObserver(() => map.invalidateSize()).observe($('map'));
+const capa = L.layerGroup().addTo(map), capaLoc = L.layerGroup().addTo(map);
 
-let vacantes = [];          // {props, latlng}
-let areas = [];             // [{nombre, n}]
-let seleccion = new Set();
+/* ---------- Datos ---------- */
+let vacantes = [], areas = [], seleccion = new Set(), sedes = new Map();
 
-fetch('data/vacantes.geojson')
-  .then(r => r.json())
-  .then(gj => {
-    vacantes = gj.features.filter(f => f.geometry).map(f => ({
-      p: f.properties,
-      ll: [f.geometry.coordinates[1], f.geometry.coordinates[0]]
-    }));
-    const cuenta = {};
-    vacantes.forEach(v => { const a = v.p.AREA || '(sin área)'; cuenta[a] = (cuenta[a] || 0) + 1; });
-    areas = Object.entries(cuenta).map(([nombre, n]) => ({ nombre, n }))
-      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
-    areas.forEach(a => { if (PRESET.test(norm(a.nombre))) seleccion.add(a.nombre); });
-    pintarLista(); dibujar();
-  })
-  .catch(e => { document.getElementById('resumen').textContent = 'Error cargando datos: ' + e; });
+fetch('data/vacantes.geojson').then(r => r.json()).then(gj => {
+  vacantes = gj.features.filter(f => f.geometry).map(f => ({ p: f.properties, ll: [f.geometry.coordinates[1], f.geometry.coordinates[0]] }));
+  const c = {};
+  vacantes.forEach(v => { const a = v.p.AREA || '(sin área)'; c[a] = (c[a] || 0) + 1; });
+  areas = Object.entries(c).map(([nombre, n]) => ({ nombre, n })).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  areas.forEach(a => PRESET.test(norm(a.nombre)) && seleccion.add(a.nombre));
+  lista(); dibujar();
+}).catch(e => { $('resTotal').textContent = 'No se pudieron cargar los datos'; $('resSedes').textContent = String(e); });
 
-function pintarLista() {
-  const q = norm(document.getElementById('buscar').value);
-  const cont = document.getElementById('areas');
-  cont.innerHTML = '';
-  areas.filter(a => norm(a.nombre).includes(q)).forEach(a => {
+function lista() {
+  const q = norm($('buscar').value), cont = $('lista'); cont.innerHTML = '';
+  const vis = areas.filter(a => norm(a.nombre).includes(q));
+  if (!vis.length) { cont.innerHTML = '<div class="vacio">Sin resultados</div>'; return; }
+  vis.forEach(a => {
     const l = document.createElement('label');
-    const cb = document.createElement('input');
-    cb.type = 'checkbox'; cb.checked = seleccion.has(a.nombre);
-    cb.onchange = () => { cb.checked ? seleccion.add(a.nombre) : seleccion.delete(a.nombre); dibujar(); };
-    const t = document.createElement('span'); t.textContent = a.nombre;
-    const n = document.createElement('span'); n.className = 'n'; n.textContent = a.n;
-    l.append(cb, t, n); cont.appendChild(l);
+    l.innerHTML = `<input type="checkbox" ${seleccion.has(a.nombre) ? 'checked' : ''}><span>${esc(a.nombre)}</span><span class="n">${a.n}</span>`;
+    l.querySelector('input').onchange = e => { e.target.checked ? seleccion.add(a.nombre) : seleccion.delete(a.nombre); dibujar(); };
+    cont.appendChild(l);
   });
 }
 
 function dibujar() {
-  capa.clearLayers();
-  const porSede = new Map();
+  capa.clearLayers(); sedes = new Map();
   vacantes.forEach(v => {
     if (!seleccion.has(v.p.AREA || '(sin área)')) return;
-    const id = v.p.OBJECTID;
-    if (!porSede.has(id)) porSede.set(id, { ll: v.ll, items: [] });
-    porSede.get(id).items.push(v.p);
+    if (!sedes.has(v.p.OBJECTID)) sedes.set(v.p.OBJECTID, { ll: v.ll, items: [] });
+    sedes.get(v.p.OBJECTID).items.push(v.p);
   });
   let total = 0;
-  porSede.forEach(g => {
-    const n = g.items.length; total += n;
-    const p0 = g.items[0];
-    const titulo = `<strong>${esc(p0.COLEGIO)}</strong><br>Sede ${esc(p0.SEDE)} &middot; ${n} vacante${n > 1 ? 's' : ''}`;
-    const lista = '<ul class="popup-list">' + g.items.map(p =>
-      `<li><b>${esc(p.AREA)}</b><br>${esc(p.CARGO)} &middot; ${esc(p.JORNADA)} &middot; ${esc(p.NIVEL)}<br>${esc(p.TIPO_VACANTE)}` +
-      (p.OBSERVACION ? `<br><small>${esc(p.OBSERVACION)}</small>` : '') + '</li>').join('') + '</ul>';
-    let m;
-    if (n === 1) {
-      m = L.circleMarker(g.ll, { radius: 7, color: '#fff', weight: 2, fillColor: '#1a5fb4', fillOpacity: 1 });
-    } else {
-      const s = Math.min(26 + String(n).length * 4, 44);
-      m = L.marker(g.ll, { icon: L.divIcon({ className: '', html: `<div class="grp" style="width:${s}px;height:${s}px">${n}</div>`, iconSize: [s, s] }) });
-    }
-    m.bindPopup(titulo + lista, { maxWidth: 320 }).addTo(capa);
+  sedes.forEach(s => {
+    const n = s.items.length; total += n;
+    const js = new Set(s.items.map(p => norm(p.JORNADA)));
+    const color = js.size === 1 ? (COLOR[[...js][0]] || MIXTA) : MIXTA;
+    L.marker(s.ll, { keyboard: true, title: s.items[0].COLEGIO, icon: L.divIcon({ className: '', iconSize: [30, 30], iconAnchor: [15, 15],
+      html: `<div class="sch" style="background:${color};color:${color}">${ICONO}${n > 1 ? `<span class="cnt">${n}</span>` : ''}</div>` }) })
+      .on('click', () => detalle(s)).addTo(capa);
   });
-  document.getElementById('resumen').textContent = `${total} vacantes en ${porSede.size} sedes`;
+  $('resTotal').textContent = `${total} vacante${total === 1 ? '' : 's'}`;
+  $('resSedes').textContent = `${sedes.size} sede${sedes.size === 1 ? '' : 's'}`;
+  cerrarDetalle();
 }
 
-document.getElementById('buscar').oninput = pintarLista;
-document.getElementById('preset').onclick = () => {
-  seleccion = new Set(areas.filter(a => PRESET.test(norm(a.nombre))).map(a => a.nombre)); pintarLista(); dibujar();
-};
-document.getElementById('todas').onclick = () => { seleccion = new Set(areas.map(a => a.nombre)); pintarLista(); dibujar(); };
-document.getElementById('ninguna').onclick = () => { seleccion.clear(); pintarLista(); dibujar(); };
+/* ---------- Detalle de sede (en el panel, no en un globo) ---------- */
+function detalle(s) {
+  const p0 = s.items[0], n = s.items.length;
+  $('detNombre').textContent = p0.COLEGIO;
+  $('detSub').textContent = `Sede ${p0.SEDE} · ${n} vacante${n > 1 ? 's' : ''}`;
+  $('detLista').innerHTML = s.items.map(p => {
+    const k = norm(p.JORNADA);
+    return `<div class="vac"><div class="area">${esc(p.AREA)}</div>
+      <div class="jor"><span class="dot" style="background:${COLOR[k] || MIXTA}"></span>${esc(p.JORNADA)} · ${esc(p.CARGO)} · ${esc(p.NIVEL)}</div>
+      <div class="jor">${esc(p.TIPO_VACANTE)}</div>${p.OBSERVACION ? `<div class="obs">${esc(p.OBSERVACION)}</div>` : ''}</div>`;
+  }).join('');
+  document.body.classList.add('ver-detalle');
+  if ($('panel').closest('body').classList.contains('cerrado')) abrirPanel(true);
+  if (esMovil() && document.body.dataset.hoja === 'min') document.body.dataset.hoja = 'med';
+  document.querySelector('.contenido').scrollTop = 0;
+  if (!esMovil()) map.panTo(s.ll);
+}
+function cerrarDetalle() { document.body.classList.remove('ver-detalle'); }
+$('volver').onclick = cerrarDetalle;
 
-// Ubicación del dispositivo
+/* ---------- Panel plegable ---------- */
+function abrirPanel(abierto) {
+  document.body.classList.toggle('cerrado', !abierto);
+  $('btnPanel').setAttribute('aria-expanded', abierto);
+}
+$('btnPanel').onclick = () => {
+  if (esMovil()) { document.body.dataset.hoja = document.body.dataset.hoja === 'min' ? 'med' : 'min'; }
+  else abrirPanel(document.body.classList.contains('cerrado'));
+};
+const ORDEN = ['min', 'med', 'max'];
+$('handle').onclick = () => { const i = ORDEN.indexOf(document.body.dataset.hoja); document.body.dataset.hoja = ORDEN[(i + 1) % 3]; };
+// Arrastre vertical de la manija
+let y0 = null;
+$('handle').addEventListener('touchstart', e => { y0 = e.touches[0].clientY; }, { passive: true });
+$('handle').addEventListener('touchend', e => {
+  if (y0 === null) return; const dy = e.changedTouches[0].clientY - y0; y0 = null;
+  if (Math.abs(dy) < 25) return;
+  const i = ORDEN.indexOf(document.body.dataset.hoja);
+  document.body.dataset.hoja = ORDEN[Math.max(0, Math.min(2, i + (dy < 0 ? 1 : -1)))];
+  e.preventDefault();
+});
+if (esMovil()) document.body.dataset.hoja = 'med';
+
+/* ---------- Filtros ---------- */
+$('buscar').oninput = lista;
+$('preset').onclick = () => { seleccion = new Set(areas.filter(a => PRESET.test(norm(a.nombre))).map(a => a.nombre)); lista(); dibujar(); };
+$('todas').onclick = () => { seleccion = new Set(areas.map(a => a.nombre)); lista(); dibujar(); };
+$('ninguna').onclick = () => { seleccion.clear(); lista(); dibujar(); };
+
+/* ---------- Leyenda (en el panel y en el mapa, plegable) ---------- */
+const filasLeyenda = Object.keys(COLOR).map(k => `<div class="leg-fila"><span class="dot" style="background:${COLOR[k]}"></span>${NOMBRE[k]}</div>`).join('')
+  + `<div class="leg-fila"><span class="dot" style="background:${MIXTA}"></span>Varias jornadas</div>`
+  + '<div class="nota">El número sobre el símbolo indica las vacantes de la sede.</div>';
+$('legPanel').innerHTML = filasLeyenda;
+
+const Leyenda = L.Control.extend({
+  onAdd() {
+    const d = L.DomUtil.create('div', 'leyenda' + (esMovil() ? ' min' : ''));
+    d.innerHTML = `<button aria-expanded="${!esMovil()}"><span>Leyenda · Jornada</span><span aria-hidden="true">▾</span></button><div class="cuerpo">${filasLeyenda}</div>`;
+    L.DomEvent.disableClickPropagation(d);
+    d.querySelector('button').onclick = e => { const m = d.classList.toggle('min'); e.currentTarget.setAttribute('aria-expanded', !m); };
+    return d;
+  }
+});
+new Leyenda({ position: 'bottomleft' }).addTo(map);
+
+/* ---------- Ubicación del dispositivo ---------- */
+let avisoT;
+function aviso(t, ms = 3500) { const a = $('aviso'); a.textContent = t; a.style.display = 'block'; clearTimeout(avisoT); avisoT = setTimeout(() => a.style.display = 'none', ms); }
 const Loc = L.Control.extend({
   onAdd() {
-    const b = L.DomUtil.create('button', 'btn-loc'); b.textContent = 'Mi ubicación';
+    const b = L.DomUtil.create('button', 'ctl-btn leaflet-bar');
+    b.style.cssText = 'width:40px;height:40px;cursor:pointer';
+    b.setAttribute('aria-label', 'Mostrar mi ubicación'); b.title = 'Mi ubicación';
+    b.innerHTML = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>';
     L.DomEvent.disableClickPropagation(b);
-    b.onclick = () => map.locate({ setView: true, maxZoom: 15, enableHighAccuracy: true });
+    b.onclick = () => { aviso('Obteniendo ubicación…', 8000); map.locate({ setView: true, maxZoom: 15, enableHighAccuracy: true }); };
     return b;
   }
 });
-new Loc({ position: 'topleft' }).addTo(map);
-let capaLoc = L.layerGroup().addTo(map);
+new Loc({ position: 'topright' }).addTo(map);
 map.on('locationfound', e => {
   capaLoc.clearLayers();
-  L.circle(e.latlng, { radius: e.accuracy, color: '#e01b24', weight: 1, fillOpacity: 0.1 }).addTo(capaLoc);
-  L.circleMarker(e.latlng, { radius: 8, color: '#fff', weight: 2, fillColor: '#e01b24', fillOpacity: 1 })
-    .bindPopup(`Estás aquí (±${Math.round(e.accuracy)} m)`).addTo(capaLoc);
+  L.circle(e.latlng, { radius: e.accuracy, color: '#0b5394', weight: 1, fillOpacity: .1 }).addTo(capaLoc);
+  L.circleMarker(e.latlng, { radius: 8, color: '#fff', weight: 3, fillColor: '#0b5394', fillOpacity: 1 }).addTo(capaLoc);
+  aviso(`Ubicación encontrada (precisión ±${Math.round(e.accuracy)} m)`);
 });
-map.on('locationerror', e => alert('No se pudo obtener la ubicación: ' + e.message));
+map.on('locationerror', e => aviso(e.code === 1 ? 'Permiso de ubicación denegado. Habilítelo en el navegador.' : 'No se pudo obtener la ubicación.', 5000));
 </script>
 </body>
 </html>
