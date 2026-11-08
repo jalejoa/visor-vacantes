@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vacantes docentes</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  html, body { height: 100%; margin: 0; font-family: system-ui, sans-serif; font-size: 14px; }
+  #app { display: flex; height: 100%; }
+  #panel { width: 300px; flex: none; display: flex; flex-direction: column; border-right: 1px solid #ccc; background: #fff; }
+  #panel header { padding: 10px 12px; border-bottom: 1px solid #ddd; }
+  #panel h1 { font-size: 16px; margin: 0 0 4px; }
+  #resumen { color: #555; }
+  #tools { padding: 8px 12px; display: flex; gap: 6px; flex-wrap: wrap; border-bottom: 1px solid #eee; }
+  #tools input[type=search] { flex: 1 1 100%; padding: 6px; box-sizing: border-box; }
+  button { padding: 5px 8px; cursor: pointer; }
+  #areas { flex: 1; overflow-y: auto; padding: 4px 12px; }
+  #areas label { display: flex; gap: 6px; padding: 3px 0; align-items: flex-start; }
+  #areas .n { margin-left: auto; color: #777; }
+  #map { flex: 1; }
+  .grp { background: #1a5fb4; color: #fff; border: 2px solid #fff; border-radius: 50%;
+         display: flex; align-items: center; justify-content: center; font-weight: 700; box-shadow: 0 0 3px #0008; }
+  .popup-list { max-height: 220px; overflow-y: auto; margin: 6px 0 0; padding-left: 16px; }
+  .popup-list li { margin-bottom: 6px; }
+  .btn-loc { background: #fff; border: 2px solid rgba(0,0,0,.3); border-radius: 4px; padding: 6px 9px; font-weight: 600; }
+  @media (max-width: 700px) {
+    #app { flex-direction: column-reverse; }
+    #panel { width: auto; height: 42%; border-right: 0; border-top: 1px solid #ccc; }
+    #map { flex: 1; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="panel">
+    <header>
+      <h1>Vacantes - aula regular</h1>
+      <div id="resumen">Cargando...</div>
+    </header>
+    <div id="tools">
+      <input id="buscar" type="search" placeholder="Buscar área...">
+      <button id="preset">Empresa / Comercio / Contab.</button>
+      <button id="todas">Todas</button>
+      <button id="ninguna">Ninguna</button>
+    </div>
+    <div id="areas"></div>
+  </aside>
+  <div id="map"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const PRESET = /GESTION EMPRESARIAL|COMERCI|EMPRENDIMIENTO|CONTABILIDAD|GESTION CONTABLE/;
+const norm = s => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim();
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const map = L.map('map').setView([4.65, -74.1], 11);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19, attribution: '&copy; OpenStreetMap'
+}).addTo(map);
+const capa = L.layerGroup().addTo(map);
+window.addEventListener('load', () => map.invalidateSize());
+new ResizeObserver(() => map.invalidateSize()).observe(document.getElementById('map'));
+
+let vacantes = [];          // {props, latlng}
+let areas = [];             // [{nombre, n}]
+let seleccion = new Set();
+
+fetch('data/vacantes.geojson')
+  .then(r => r.json())
+  .then(gj => {
+    vacantes = gj.features.filter(f => f.geometry).map(f => ({
+      p: f.properties,
+      ll: [f.geometry.coordinates[1], f.geometry.coordinates[0]]
+    }));
+    const cuenta = {};
+    vacantes.forEach(v => { const a = v.p.AREA || '(sin área)'; cuenta[a] = (cuenta[a] || 0) + 1; });
+    areas = Object.entries(cuenta).map(([nombre, n]) => ({ nombre, n }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+    areas.forEach(a => { if (PRESET.test(norm(a.nombre))) seleccion.add(a.nombre); });
+    pintarLista(); dibujar();
+  })
+  .catch(e => { document.getElementById('resumen').textContent = 'Error cargando datos: ' + e; });
+
+function pintarLista() {
+  const q = norm(document.getElementById('buscar').value);
+  const cont = document.getElementById('areas');
+  cont.innerHTML = '';
+  areas.filter(a => norm(a.nombre).includes(q)).forEach(a => {
+    const l = document.createElement('label');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.checked = seleccion.has(a.nombre);
+    cb.onchange = () => { cb.checked ? seleccion.add(a.nombre) : seleccion.delete(a.nombre); dibujar(); };
+    const t = document.createElement('span'); t.textContent = a.nombre;
+    const n = document.createElement('span'); n.className = 'n'; n.textContent = a.n;
+    l.append(cb, t, n); cont.appendChild(l);
+  });
+}
+
+function dibujar() {
+  capa.clearLayers();
+  const porSede = new Map();
+  vacantes.forEach(v => {
+    if (!seleccion.has(v.p.AREA || '(sin área)')) return;
+    const id = v.p.OBJECTID;
+    if (!porSede.has(id)) porSede.set(id, { ll: v.ll, items: [] });
+    porSede.get(id).items.push(v.p);
+  });
+  let total = 0;
+  porSede.forEach(g => {
+    const n = g.items.length; total += n;
+    const p0 = g.items[0];
+    const titulo = `<strong>${esc(p0.COLEGIO)}</strong><br>Sede ${esc(p0.SEDE)} &middot; ${n} vacante${n > 1 ? 's' : ''}`;
+    const lista = '<ul class="popup-list">' + g.items.map(p =>
+      `<li><b>${esc(p.AREA)}</b><br>${esc(p.CARGO)} &middot; ${esc(p.JORNADA)} &middot; ${esc(p.NIVEL)}<br>${esc(p.TIPO_VACANTE)}` +
+      (p.OBSERVACION ? `<br><small>${esc(p.OBSERVACION)}</small>` : '') + '</li>').join('') + '</ul>';
+    let m;
+    if (n === 1) {
+      m = L.circleMarker(g.ll, { radius: 7, color: '#fff', weight: 2, fillColor: '#1a5fb4', fillOpacity: 1 });
+    } else {
+      const s = Math.min(26 + String(n).length * 4, 44);
+      m = L.marker(g.ll, { icon: L.divIcon({ className: '', html: `<div class="grp" style="width:${s}px;height:${s}px">${n}</div>`, iconSize: [s, s] }) });
+    }
+    m.bindPopup(titulo + lista, { maxWidth: 320 }).addTo(capa);
+  });
+  document.getElementById('resumen').textContent = `${total} vacantes en ${porSede.size} sedes`;
+}
+
+document.getElementById('buscar').oninput = pintarLista;
+document.getElementById('preset').onclick = () => {
+  seleccion = new Set(areas.filter(a => PRESET.test(norm(a.nombre))).map(a => a.nombre)); pintarLista(); dibujar();
+};
+document.getElementById('todas').onclick = () => { seleccion = new Set(areas.map(a => a.nombre)); pintarLista(); dibujar(); };
+document.getElementById('ninguna').onclick = () => { seleccion.clear(); pintarLista(); dibujar(); };
+
+// Ubicación del dispositivo
+const Loc = L.Control.extend({
+  onAdd() {
+    const b = L.DomUtil.create('button', 'btn-loc'); b.textContent = 'Mi ubicación';
+    L.DomEvent.disableClickPropagation(b);
+    b.onclick = () => map.locate({ setView: true, maxZoom: 15, enableHighAccuracy: true });
+    return b;
+  }
+});
+new Loc({ position: 'topleft' }).addTo(map);
+let capaLoc = L.layerGroup().addTo(map);
+map.on('locationfound', e => {
+  capaLoc.clearLayers();
+  L.circle(e.latlng, { radius: e.accuracy, color: '#e01b24', weight: 1, fillOpacity: 0.1 }).addTo(capaLoc);
+  L.circleMarker(e.latlng, { radius: 8, color: '#fff', weight: 2, fillColor: '#e01b24', fillOpacity: 1 })
+    .bindPopup(`Estás aquí (±${Math.round(e.accuracy)} m)`).addTo(capaLoc);
+});
+map.on('locationerror', e => alert('No se pudo obtener la ubicación: ' + e.message));
+</script>
+</body>
+</html>
